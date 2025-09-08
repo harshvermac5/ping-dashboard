@@ -7,7 +7,7 @@ Color-coded rows help quickly identify:
 - 🟢 Alive (reachable)
 - 🟡 Partial (recent ping failed but not yet fully down)
 - 🔴 Down (3 consecutive ping failures)
-- 🔵 Unmounted (manually marked)
+- 🔵 Unmounted (manually marked using double cliking unmounted cell or using spacebar)
 
 ---
 
@@ -31,11 +31,11 @@ cd ping-monitor-app
 
 ## 🖱️ Usage Instructions
 
-1. Prepare three text files (optional):
+1. Prepare three text files (provided):
 
    * `ips.txt` → list of IP addresses (one per line)
-   * `hostnames.txt` → matching hostnames
-   * `racks.txt` → rack numbers
+   * `hostnames.txt` → matching hostnames (optional)
+   * `racks.txt` → rack numbers (optional)
      *(Line numbers should correspond to the same device across files)*
 
 2. Run the app:
@@ -51,6 +51,7 @@ python ping_monitor.py
    * **Search** → Filter rows by IP/hostname/rack.
    * **Double-click Unmounted** → Mark/unmark devices as excluded from monitoring.
    * **Sorting** → Click column headers to sort (IPs sorted numerically).
+   * **Cross-Platform** → Automatically adjust itself on all three major platforms (Windows, Linux and MacOS)
    * **Color codes**:
 
      * 🟢 Alive
@@ -58,28 +59,37 @@ python ping_monitor.py
      * 🔴 Down (3 fails)
      * 🔵 Unmounted
 
+4. Screenshots:
+
+Sample files to paste IPs on (Provided):
+
+<img src="./Screenshots/00-ping-dashboard.png" width="600"/>
+
+After loading IPs:
+
+<img src="./Screenshots/01-ping-dashboard.png" width="600"/>
+
+When we miss responses:
+
+<img src="./Screenshots/02-ping-dashboard.png" width="600"/>
+
+When response are failing continuously (3 times):
+
+<img src="./Screenshots/03-ping-dashboard.png" width="600"/>
+
+Unmount tick-mark using double click or spacebar:
+
+<img src="./Screenshots/04-ping-dashboard.png" width="600"/>
+
 ---
 
 ## 📜 License
 
-This project is licensed under the **MIT License** – see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GPLv3 License** – see the [LICENSE](LICENSE) file for details.
 
 ---
 
 
-⚠️ **Warning:** This tool relies on the `ping` command available in Windows.
-It may require modifications for Linux/macOS compatibility.
-
-This code is provided "as is", **without any warranty of any kind**, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+⚠️ **Warning:** : This code is provided "as is", **without any warranty of any kind**, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
 
 The author(s) shall **not be held liable for any damages** arising from the use of this tool.
-
-## 🛠️ Planned Features / Roadmap
-
-1. 📊 Display a live count of unmounted rows in the status bar.
-
-2. ⌨️ Allow toggling the Unmounted tick mark with the Space bar (keyboard shortcut).
-
-3. 📑 Export results to CSV for reporting.
-
-4. 🌐 Cross-platform support (Linux/macOS with native ping command).

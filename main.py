@@ -5,21 +5,27 @@ import ipaddress
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+import csv
+import platform
 
 
 def ping_host(ip):
     try:
-        result = subprocess.run(
-            ["ping", "-n", "1", "-w", "1000", ip],
-            capture_output=True, text=True
-        )
+        system = platform.system().lower()
+        if system == "windows":
+            cmd = ["ping", "-n", "1", "-w", "1000", ip]
+        else:  # Linux/macOS
+            cmd = ["ping", "-c", "1", "-W", "1", ip]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
         output = result.stdout.lower()
 
         if any(err in output for err in [
             "could not find host",
             "destination host unreachable",
             "request timed out",
-            "general failure"
+            "general failure",
+            "100% packet loss"
         ]):
             return False, None
 
@@ -81,6 +87,10 @@ class PingMonitorApp:
         # Quit
         ttk.Button(top_frame, text="Quit", command=self.root.quit).pack(side=tk.RIGHT, padx=2)
 
+        # Export Button
+        ttk.Button(top_frame, text="Export CSV", command=self.export_csv).pack(side=tk.RIGHT, padx=2)
+
+
         # Table (Unmounted first)
         self.columns = ("Unmounted", "IP Address", "Hostname", "Rack",
                         "Sent", "Received", "Loss%", "Avg", "Last")
@@ -98,6 +108,7 @@ class PingMonitorApp:
 
         # Bind toggle for "Unmounted"
         self.tree.bind("<Double-1>", self.toggle_unmounted)
+        self.root.bind("<space>", self.toggle_unmounted_key)
 
         # Status bar
         self.status_var = tk.StringVar(value="Ready")
@@ -179,8 +190,10 @@ class PingMonitorApp:
     def update_status_bar(self):
         alive = sum(1 for ip in self.ip_list if self.stats[ip]["alive"])
         down = len(self.ip_list) - alive
+        unmounted = sum(1 for ip in self.ip_list if self.stats[ip]["unmounted"])
+
         self.status_var.set(
-            f"Total: {len(self.ip_list)} | Alive: {alive} | Down: {down} | Last Update: {time.strftime('%H:%M:%S')}"
+            f"Total: {len(self.ip_list)} | Alive: {alive} | Down: {down} | Unmounted: {unmounted} | Last Update: {time.strftime('%H:%M:%S')}"
         )
 
     def run_monitor(self):
@@ -285,6 +298,37 @@ class PingMonitorApp:
         idx = self.ip_list.index(ip)
         values, tag = self._row_values_and_tag(ip, idx)
         self.tree.item(ip, values=values, tags=(tag,))
+
+    def toggle_unmounted_key(self, event):
+        selected = self.tree.selection()
+        if not selected:
+            return
+        for item in selected:
+            ip = self.tree.item(item, "values")[1]
+            self.stats[ip]["unmounted"] = not self.stats[ip]["unmounted"]
+            idx = self.ip_list.index(ip)
+            values, tag = self._row_values_and_tag(ip, idx)
+            self.tree.item(ip, values=values, tags=(tag,))
+        self.update_status_bar()
+
+    def export_csv(self):
+        file = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if not file:
+            return
+
+        with open(file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(self.columns)  # header row
+            for ip in self.ip_list:
+                idx = self.ip_list.index(ip)
+                values, _ = self._row_values_and_tag(ip, idx)
+                writer.writerow(values)
+
+        self.status_var.set(f"Exported results to {file}")
+
 
 
 if __name__ == "__main__":
