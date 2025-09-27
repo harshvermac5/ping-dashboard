@@ -42,7 +42,7 @@ class PingMonitorApp:
     # ------------------ UI Setup ------------------
     def setup_ui(self):
         top_frame = ttk.Frame(self.root)
-        top_frame.pack(fill=tk.X, padx=5, pady=5)
+        top_frame.pack(fill=tk.X,side=tk.TOP, padx=5, pady=5)
 
         ttk.Button(top_frame, text="Browse IPs", command=self.load_ips).pack(side=tk.LEFT, padx=2)
         ttk.Button(top_frame, text="Browse Hostnames", command=self.load_hostnames).pack(side=tk.LEFT, padx=2)
@@ -64,9 +64,10 @@ class PingMonitorApp:
         ttk.Button(top_frame, text="Quit", command=self.quit_app).pack(side=tk.RIGHT, padx=2)
         ttk.Button(top_frame, text="Export CSV", command=self.export_csv).pack(side=tk.RIGHT, padx=2)
 
+        # --- Treeview (middle, expands) ---
         self.columns = ("Unmounted", "IP Address", "Hostname", "Rack",
                         "Sent", "Received", "Loss%", "Avg", "Last")
-        self.tree = ttk.Treeview(self.root, columns=self.columns, show="headings", height=25)
+        self.tree = ttk.Treeview(self.root, columns=self.columns, show="headings")
         for col in self.columns:
             self.tree.heading(col, text=col, command=lambda c=col: self.sort_by_column(c, False))
             self.tree.column(col, width=100, anchor=tk.CENTER)
@@ -296,20 +297,20 @@ class PingMonitorApp:
 
     def on_select(self, event):
         self.blinking_rows = set(self.tree.selection())
-    
+
         # Cancel any previous scheduled clear
         if self.clear_selection_job:
             self.root.after_cancel(self.clear_selection_job)
-    
+
         # Schedule a new clear 10 seconds later
         self.clear_selection_job = self.root.after(10000, self.clear_selection)
-    
+
     def clear_selection(self):
         for item in self.tree.selection():
             self.tree.selection_remove(item)
         self.blinking_rows.clear()
         self.clear_selection_job = None
-    
+
 
     def export_csv(self):
         file = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
