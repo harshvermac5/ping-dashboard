@@ -30,14 +30,11 @@ class PingMonitorApp:
         self.monitor_running = False
         self.stop_event = threading.Event()
 
-        # Blinking state
-        self.blinking_rows = set()
-        self._blink_state = True
-
         self.clear_selection_job = None   # keep track of scheduled job
 
+        self.unmounted = set()
+
         self.setup_ui()
-        self._blink_selection_loop()  # start the blinking loop
 
     # ------------------ UI Setup ------------------
     def setup_ui(self):
@@ -63,6 +60,8 @@ class PingMonitorApp:
         ttk.Entry(top_frame, textvariable=self.search_var, width=20).pack(side=tk.LEFT, padx=5)
         ttk.Button(top_frame, text="Quit", command=self.quit_app).pack(side=tk.RIGHT, padx=2)
         ttk.Button(top_frame, text="Export CSV", command=self.export_csv).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(top_frame, text="Reset Unmounted", command=self.reset_unmounted).pack(side=tk.RIGHT, padx=2)
+
 
         # --- Treeview (middle, expands) ---
         self.columns = ("Unmounted", "IP Address", "Hostname", "Rack",
@@ -93,15 +92,14 @@ class PingMonitorApp:
         self.message_var = tk.StringVar(value="")
         ttk.Label(status_frame, textvariable=self.message_var, anchor="e").pack(side=tk.RIGHT, padx=5)
 
-    # ------------------ Blinking ------------------
-    def _blink_selection_loop(self):
-        self._blink_state = not self._blink_state
-        if self.ip_list:
-            self.refresh_table()
-        self.root.after(600, self._blink_selection_loop)
+    def reset_unmounted(self):
+        """Clear unmounted flags for all IPs."""
+        for ip in self.stats:
+            if self.stats[ip].get("unmounted", False):
+                self.stats[ip]["unmounted"] = False
+        self.refresh_table()
+        self.message_var.set("Unmounted ticks reset")
 
-    def on_select(self, event):
-        self.blinking_rows = set(self.tree.selection())
 
     # ------------------ Data Loaders ------------------
     def load_ips(self):
@@ -160,15 +158,12 @@ class PingMonitorApp:
         return values, tag
 
     def refresh_table(self, initial=False):
+
         filter_text = self.search_var.get().strip().lower()
         for idx, ip in enumerate(self.ip_list):
             values, tag = self._row_values_and_tag(ip, idx)
 
-            # Apply blink overlay if needed
-            if ip in self.blinking_rows and self._blink_state:
-                tags = (tag, "blueblink")
-            else:
-                tags = (tag,)
+            tags = (tag,)
 
             # If item exists → update, else → insert
             if self.tree.exists(ip):
