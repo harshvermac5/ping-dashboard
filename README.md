@@ -2,7 +2,8 @@
 
 ## 📌 Description
 Ping Dashboard is a lightweight Python-based tool to **monitor the availability of multiple IP addresses in real-time**.  
-It uses a **Tkinter GUI** to display IP addresses, hostname, rack information, and live ping statistics.  
+It uses a **Tkinter GUI** to display IP addresses, hostname, rack information, and live ping statistics.
+  
 Color-coded rows help quickly identify:
 - 🟢 Alive (reachable)
 - 🟡 Partial (recent ping failed but not yet fully down)
@@ -17,14 +18,16 @@ Color-coded rows help quickly identify:
 Make sure you have the following installed (in this order):
 1. [Python 3.9+](https://www.python.org/downloads/)
 2. Tkinter (comes pre-installed with Python on most systems)
-3. `concurrent.futures` (built-in with Python 3.2+)
-4. Windows OS with `ping` command available
+3. Pyperclip (Python libraries, that supports quick copying of output to clipboard)
 
 ### 🚀 Setup
 ```bash
 # Clone the repository
 git clone https://github.com/harshvermac5/ping-dashboard.git
 cd ping-monitor-app
+
+# Fulfill the only external dependencies 
+pip install pyperclip
 ````
 
 ---
@@ -48,8 +51,8 @@ python ping_monitor.py
 
    * **Browse Buttons** → Load IPs, hostnames, and rack info.
    * **Refresh Interval** → Choose auto-refresh frequency.
-   * **Search** → Filter rows by IP/hostname/rack.
-   * **Double-click Unmounted** → Mark/unmark devices as excluded from monitoring.
+   * **Live Search** → Filter rows by IP/hostname/rack.
+   * **Double-click Unmounted** → Mark/unmark devices as excluded from monitoring (can be toggled by spacebar as well).
    * **Sorting** → Click column headers to sort (IPs sorted numerically).
    * **Cross-Platform** → Automatically adjust itself on all three major platforms (Windows, Linux and MacOS)
    * **Color codes**:
@@ -58,6 +61,9 @@ python ping_monitor.py
      * 🟡 Partial
      * 🔴 Down (3 fails)
      * 🔵 Unmounted
+				* **Reset Unmount** → One click to clear unmounted
+				* **Exporting** → Export the table into beautiful csv format.
+				* **Quit** → Responsive and graceful exit from the ongoing threads.
 
 4. Screenshots:
 
