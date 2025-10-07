@@ -2,8 +2,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 import threading
 import time
-import platform
-import pyperclip
 import sys, os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -12,7 +10,10 @@ from fileops import read_list_from_file, export_to_csv
 
 
 class PingMonitorApp:
+
+    # ------------------ Initialisation and Setup ------------------
     def __init__(self, root):
+        """Initialize app variables, setup UI, and start periodic refresh/polling."""
         self.root = root
         self.root.title("Ping Monitor")
 
@@ -30,16 +31,16 @@ class PingMonitorApp:
         self.monitor_running = False
         self.stop_event = threading.Event()
 
-        self.clear_selection_job = None   # keep track of scheduled job
-
+        # (no one-shot timer used — polling will handle auto-clear)
         self.unmounted = set()
+        self.blinking_rows = set()
 
         self.setup_ui()
 
-    # ------------------ UI Setup ------------------
     def setup_ui(self):
+        """Build and place all UI elements (buttons, search, checkbox, table, status bar)."""
         top_frame = ttk.Frame(self.root)
-        top_frame.pack(fill=tk.X,side=tk.TOP, padx=5, pady=5)
+        top_frame.pack(fill=tk.X, side=tk.TOP, padx=5, pady=5)
 
         ttk.Button(top_frame, text="Browse IPs", command=self.load_ips).pack(side=tk.LEFT, padx=2)
         ttk.Button(top_frame, text="Browse Hostnames", command=self.load_hostnames).pack(side=tk.LEFT, padx=2)
@@ -56,12 +57,23 @@ class PingMonitorApp:
         interval_combo.pack(side=tk.LEFT, padx=2)
 
         self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", self.on_search_change)
+
         ttk.Label(top_frame, text="Search:").pack(side=tk.LEFT, padx=5)
-        ttk.Entry(top_frame, textvariable=self.search_var, width=20).pack(side=tk.LEFT, padx=5)
+        ttk.Entry(top_frame, textvariable=self.search_var, width=20).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top_frame, text="Clear Search", command=self.clear_search).pack(side=tk.LEFT, padx=2)
+
+        self.auto_clear_var = tk.BooleanVar(value=True)
+        
+        ttk.Checkbutton(
+            top_frame,
+            text="Auto-clear highlight",
+            variable=self.auto_clear_var
+        ).pack(side=tk.LEFT, padx=5)
+
         ttk.Button(top_frame, text="Quit", command=self.quit_app).pack(side=tk.RIGHT, padx=2)
         ttk.Button(top_frame, text="Export CSV", command=self.export_csv).pack(side=tk.RIGHT, padx=2)
         ttk.Button(top_frame, text="Reset Unmounted", command=self.reset_unmounted).pack(side=tk.RIGHT, padx=2)
-
 
         # --- Treeview (middle, expands) ---
         self.columns = ("Unmounted", "IP Address", "Hostname", "Rack",
@@ -92,17 +104,12 @@ class PingMonitorApp:
         self.message_var = tk.StringVar(value="")
         ttk.Label(status_frame, textvariable=self.message_var, anchor="e").pack(side=tk.RIGHT, padx=5)
 
-    def reset_unmounted(self):
-        """Clear unmounted flags for all IPs."""
-        for ip in self.stats:
-            if self.stats[ip].get("unmounted", False):
-                self.stats[ip]["unmounted"] = False
-        self.refresh_table()
-        self.message_var.set("Unmounted ticks reset")
-
+        # start the single polling job for auto-clear
+        self.start_auto_clear_polling()
 
     # ------------------ Data Loaders ------------------
     def load_ips(self):
+        """Load IP addresses from a file into memory."""
         self.stop_monitor()
         file = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
         if not file:
@@ -121,6 +128,7 @@ class PingMonitorApp:
         self.run_monitor()
 
     def load_hostnames(self):
+        """Load hostnames from a file into memory."""
         file = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
         if not file:
             return
@@ -128,6 +136,7 @@ class PingMonitorApp:
         self.refresh_table()
 
     def load_racks(self):
+        """Load rack information from a file into memory."""
         file = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
         if not file:
             return
@@ -158,29 +167,25 @@ class PingMonitorApp:
         return values, tag
 
     def refresh_table(self, initial=False):
-
+        """Refresh the table display based on current data and search filter."""
         filter_text = self.search_var.get().strip().lower()
+
         for idx, ip in enumerate(self.ip_list):
             values, tag = self._row_values_and_tag(ip, idx)
-
             tags = (tag,)
 
-            # If item exists → update, else → insert
             if self.tree.exists(ip):
                 self.tree.item(ip, values=values, tags=tags)
             else:
                 self.tree.insert("", "end", iid=ip, values=values, tags=tags)
 
-            # Hide rows that don’t match filter
             if filter_text and filter_text not in " ".join(map(str, values)).lower():
                 self.tree.detach(ip)
             else:
                 self.tree.reattach(ip, "", "end")
 
-        # Reapply sort if a column is sorted
         if self.sort_col:
             self._apply_sort(self.sort_col, self.sort_reverse)
-
 
     def update_status_bar(self):
         alive = sum(1 for ip in self.ip_list if self.stats[ip]["alive"])
@@ -209,15 +214,28 @@ class PingMonitorApp:
         def monitor_loop():
             while self.monitor_running and not self.stop_event.is_set():
                 try:
-                    self.interval = int(self.interval_var.get())
+                    interval = int(self.interval_var.get())
                 except ValueError:
-                    self.interval = 5
+                    interval = 5
+
                 for ip in self.ip_list:
                     if not self.monitor_running or self.stop_event.is_set():
                         break
                     self.executor.submit(self.ping_and_update, ip)
-                if self.stop_event.wait(self.interval):
-                    break
+
+                # Instead of sleeping full interval at once, check every 0.5 sec
+                elapsed = 0
+                while elapsed < interval and not self.stop_event.is_set():
+                    time.sleep(0.5)
+                    # dynamically update if user changes interval
+                    try:
+                        new_interval = int(self.interval_var.get())
+                        if new_interval != interval:
+                            interval = new_interval
+                            break
+                    except ValueError:
+                        pass
+                    elapsed += 0.5
 
         self.monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         self.monitor_thread.start()
@@ -246,7 +264,38 @@ class PingMonitorApp:
         self.root.after(0, self.refresh_table)
         self.root.after(0, self.update_status_bar)
 
-    # ------------------ Other UI Actions ------------------
+    # ------------------ Selection / Highlight / Autoclear ------------------
+    def on_select(self, event):
+        # only record blinking rows — polling handles the clear
+        self.blinking_rows = set(self.tree.selection())
+
+    def clear_selection(self):
+        for item in list(self.tree.selection()):
+            self.tree.selection_remove(item)
+        self.blinking_rows.clear()
+
+    def start_auto_clear_polling(self):
+        """Continuously check every 10s if auto-clear should run."""
+        try:
+            if self.auto_clear_var.get() and self.tree.selection():
+                # clear selection if checkbox ON and something is selected
+                self.clear_selection()
+        finally:
+            # reschedule itself every 10s regardless of exceptions
+            self.root.after(10000, self.start_auto_clear_polling)
+
+    # ------------------ Search / Filter ------------------
+    def clear_search(self):
+        """Clear the search box and reset table filter."""
+        self.search_var.set("")
+        self.refresh_table()
+        self.message_var.set("Search cleared")
+
+    def on_search_change(self, *args):
+        """Callback when search text changes."""
+        self.refresh_table()
+
+    # ------------------ Row Actions ------------------
     def toggle_unmounted(self, event):
         item = self.tree.selection()
         if not item:
@@ -258,6 +307,15 @@ class PingMonitorApp:
     def toggle_unmounted_key(self, event):
         self.toggle_unmounted(event)
 
+    def reset_unmounted(self):
+        """Clear unmounted flags for all IPs."""
+        for ip in self.stats:
+            if self.stats[ip].get("unmounted", False):
+                self.stats[ip]["unmounted"] = False
+        self.refresh_table()
+        self.message_var.set("Unmounted ticks reset")
+
+
     def copy_cell_to_clipboard(self, event):
         item_id = self.tree.identify_row(event.y)
         col = self.tree.identify_column(event.x)
@@ -265,16 +323,13 @@ class PingMonitorApp:
             col_num = int(col.replace("#", "")) - 1
             values = self.tree.item(item_id, "values")
             if 0 <= col_num < len(values):
-                pyperclip.copy(str(values[col_num]))
-                self.message_var.set(f"Copied: {values[col_num]}")
-
-    def apply_search(self):
-        query = self.search_var.get().lower()
-        for ip in self.ip_list:
-            values = self.tree.item(ip, "values")
-            match = any(query in str(v).lower() for v in values)
-            self.tree.detach(ip) if not match else self.tree.reattach(ip, "", "end")
-
+                try:
+                    import pyperclip
+                    pyperclip.copy(str(values[col_num]))
+                    self.message_var.set(f"Copied: {values[col_num]}")
+                except (ImportError, pyperclip.PyperclipException):
+                    self.message_var.set("Copy disabled (pyperclip not available)")
+    # ------------------ Sorting ------------------
     def sort_by_column(self, col, reverse):
         self.sort_col = col
         self.sort_reverse = reverse
@@ -290,23 +345,7 @@ class PingMonitorApp:
             self.tree.move(k, "", index)
         self.tree.heading(col, command=lambda: self.sort_by_column(col, not reverse))
 
-    def on_select(self, event):
-        self.blinking_rows = set(self.tree.selection())
-
-        # Cancel any previous scheduled clear
-        if self.clear_selection_job:
-            self.root.after_cancel(self.clear_selection_job)
-
-        # Schedule a new clear 10 seconds later
-        self.clear_selection_job = self.root.after(10000, self.clear_selection)
-
-    def clear_selection(self):
-        for item in self.tree.selection():
-            self.tree.selection_remove(item)
-        self.blinking_rows.clear()
-        self.clear_selection_job = None
-
-
+    # ------------------ CSV Export / App Exit ------------------
     def export_csv(self):
         file = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if not file:
@@ -335,3 +374,11 @@ class PingMonitorApp:
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+
+
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PingMonitorApp(root)
+    root.mainloop()

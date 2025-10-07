@@ -1,0 +1,9 @@
+SPK-D-0559 - no ping
+SPK-D-0899
+SPK-X-0836
+SPK-D-0970
+SPK-D-0725
+SPK-X-0705
+SPK-Fortigate-60E-21
+NMNE-180 - no ping
+SPK-D-0751
